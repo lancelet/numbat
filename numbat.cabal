@@ -30,10 +30,10 @@ library
   import:          base, ghc-options
   hs-source-dirs:  src
   exposed-modules: 
-    Numbat.TCP.Packet
+    Numbat.TCP.Segment
   build-depends:
-      containers
-    , optics
+      binary
+    , containers
 
 executable numbat
   import:         base, ghc-options
