@@ -33,7 +33,6 @@ library
     Numbat.TCP.Segment
   build-depends:
       binary
-    , containers
 
 executable numbat
   import:         base, ghc-options

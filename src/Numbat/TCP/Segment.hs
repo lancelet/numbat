@@ -25,13 +25,15 @@ data ControlBits
       , controlBitsFIN :: ControlBit
       }
 
+newtype DataOffset = DataOffset { unDataOffset :: Word8 } -- low 4-bits only
+
 data Header
     = Header
       { headerSourcePort       :: Word16
       , headerDestinationPort  :: Word16
       , headerSequenceNumber   :: Word32
       , headerAcknowledgement  :: Word32
-      , headerDataOffset       :: Word8  -- lowest 4-bits only
+      , headerDataOffset       :: DataOffset
       , headerControlBits      :: ControlBits
       , headerWindow           :: Word16
       , headerChecksum         :: Word16
