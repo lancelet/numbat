@@ -1,0 +1,42 @@
+cabal-version:      2.4
+name:               numbat
+version:            0.1.0.0
+synopsis:           The Network Numbat - Learning the Network Stack
+license:            BSD-3-Clause
+license-file:       LICENSE
+author:             Jonathan Merritt
+maintainer:         j.s.merritt@gmail.com
+copyright:          Copyright (C) 2020 Numbat Developers
+category:           Network
+extra-source-files: CHANGELOG.md
+description:
+  Please see the README for the package at its homepage:
+  https://github.com/jmerritt/numbat
+
+source-repository head
+  type:     git
+  location: git://githib.com/jmerritt/numbat.git
+
+common base
+  default-language: Haskell2010
+  build-depends:    base ^>=4.13.0.0
+
+common ghc-options
+  ghc-options:
+    -Wall -Wcompat -Wincomplete-record-updates
+    -Wincomplete-uni-patterns -Wredundant-constraints
+
+library
+  import:          base, ghc-options
+  hs-source-dirs:  src
+  exposed-modules: 
+    Numbat.TCP.Packet
+  build-depends:
+      containers
+    , optics
+
+executable numbat
+  import:         base, ghc-options
+  hs-source-dirs: app
+  main-is:        Main.hs
+  build-depends:  numbat
