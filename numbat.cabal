@@ -29,10 +29,23 @@ common ghc-options
 library
   import:          base, ghc-options
   hs-source-dirs:  src
-  exposed-modules: 
-    Numbat.TCP.Segment
+  exposed-modules: Numbat.TCP.Segment
+  build-depends:   binary
+
+test-suite numbat-tests
+  import:         base, ghc-options
+  type:           exitcode-stdio-1.0
+  hs-source-dirs: test
+  main-is:        Test.hs
+  other-modules:
+    Numbat.TCP.Segment.Tests
+    TestUtil
+
   build-depends:
-      binary
+    , hedgehog
+    , numbat
+    , tasty
+    , tasty-hedgehog
 
 executable numbat
   import:         base, ghc-options

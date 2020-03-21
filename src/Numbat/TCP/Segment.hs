@@ -5,11 +5,11 @@ module Numbat.TCP.Segment where
 import           Data.Bits                      ( setBit
                                                 , testBit
                                                 )
-import           Data.Function                  ( (&) )
 import           Data.Foldable                  ( foldl' )
-import           Data.Word                      ( Word8
-                                                , Word16
+import           Data.Function                  ( (&) )
+import           Data.Word                      ( Word16
                                                 , Word32
+                                                , Word8
                                                 )
 
 data ControlBit = On | Off
@@ -31,22 +31,33 @@ newtype DataOffset = DataOffset { unDataOffset :: Word8 } -- low 4-bits only
 
 data Header
     = Header
-      { headerSourcePort       :: Word16
-      , headerDestinationPort  :: Word16
-      , headerSequenceNumber   :: Word32
-      , headerAcknowledgement  :: Word32
-      , headerDataOffset       :: DataOffset
-      , headerControlBits      :: ControlBits
-      , headerWindow           :: Word16
-      , headerChecksum         :: Word16
-      , headerUrgentPointer    :: Word16
+      { headerSourcePort      :: Word16
+      , headerDestinationPort :: Word16
+      , headerSequenceNumber  :: Word32
+      , headerAcknowledgement :: Word32
+      , headerDataOffset      :: DataOffset
+      , headerControlBits     :: ControlBits
+      , headerWindow          :: Word16
+      , headerChecksum        :: Word16
+      , headerUrgentPointer   :: Word16
       }
 
-encodeControlBits :: ControlBits -> Word32
+zeroControlBits :: ControlBits
+zeroControlBits = ControlBits { controlBitsNS  = Off
+                              , controlBitsCRW = Off
+                              , controlBitsECE = Off
+                              , controlBitsURG = Off
+                              , controlBitsACK = Off
+                              , controlBitsPSH = Off
+                              , controlBitsRST = Off
+                              , controlBitsSYN = Off
+                              , controlBitsFIN = Off
+                              }
+
+encodeControlBits :: ControlBits -> Word16
 encodeControlBits controlBits =
     [ controlBitsFIN
         , controlBitsSYN
-        , controlBitsFIN
         , controlBitsRST
         , controlBitsPSH
         , controlBitsACK
@@ -56,14 +67,14 @@ encodeControlBits controlBits =
         , controlBitsNS
         ]
         & zip [0 ..]
-        & foldl' (flip setControlBit) (0 :: Word32)
+        & foldl' (flip setControlBit) (0 :: Word16)
   where
-    setControlBit :: (Int, ControlBits -> ControlBit) -> Word32 -> Word32
+    setControlBit :: (Int, ControlBits -> ControlBit) -> Word16 -> Word16
     setControlBit (index, bitFn) = case bitFn controlBits of
         On  -> flip setBit index
         Off -> id
 
-decodeControlBits :: Word32 -> ControlBits
+decodeControlBits :: Word16 -> ControlBits
 decodeControlBits word = ControlBits { controlBitsSYN = getControlBit 0
                                      , controlBitsFIN = getControlBit 1
                                      , controlBitsRST = getControlBit 2

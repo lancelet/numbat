@@ -1,0 +1,8 @@
+cradle:
+  stack:
+    - path: ./src
+      component: "numbat:lib"
+    - path: ./app
+      component: "numbat:exe:numbat"
+    - path: ./test
+      component: "numbat:test:numbat-tests"
