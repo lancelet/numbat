@@ -2,7 +2,9 @@
 -}
 module Numbat.TCP.Segment where
 
-import           Data.Bits                      ( setBit )
+import           Data.Bits                      ( setBit
+                                                , testBit
+                                                )
 import           Data.Function                  ( (&) )
 import           Data.Foldable                  ( foldl' )
 import           Data.Word                      ( Word8
@@ -41,9 +43,10 @@ data Header
       }
 
 encodeControlBits :: ControlBits -> Word32
-encodeControlBits cb =
+encodeControlBits controlBits =
     [ controlBitsFIN
         , controlBitsSYN
+        , controlBitsFIN
         , controlBitsRST
         , controlBitsPSH
         , controlBitsACK
@@ -56,6 +59,21 @@ encodeControlBits cb =
         & foldl' (flip setControlBit) (0 :: Word32)
   where
     setControlBit :: (Int, ControlBits -> ControlBit) -> Word32 -> Word32
-    setControlBit (idx, bitFn) = case bitFn cb of
-        On  -> flip setBit idx
+    setControlBit (index, bitFn) = case bitFn controlBits of
+        On  -> flip setBit index
         Off -> id
+
+decodeControlBits :: Word32 -> ControlBits
+decodeControlBits word = ControlBits { controlBitsSYN = getControlBit 0
+                                     , controlBitsFIN = getControlBit 1
+                                     , controlBitsRST = getControlBit 2
+                                     , controlBitsPSH = getControlBit 3
+                                     , controlBitsACK = getControlBit 4
+                                     , controlBitsURG = getControlBit 5
+                                     , controlBitsECE = getControlBit 6
+                                     , controlBitsCRW = getControlBit 7
+                                     , controlBitsNS  = getControlBit 8
+                                     }
+  where
+    getControlBit :: Int -> ControlBit
+    getControlBit index = if testBit word index then On else Off
