@@ -5,8 +5,6 @@ module Numbat.TCP.Segment where
 import           Data.Bits                      ( setBit
                                                 , testBit
                                                 )
-import           Data.Foldable                  ( foldl' )
-import           Data.Function                  ( (&) )
 import           Data.Word                      ( Word16
                                                 , Word32
                                                 , Word8
@@ -56,21 +54,20 @@ zeroControlBits = ControlBits { controlBitsNS  = Off
 
 encodeControlBits :: ControlBits -> Word16
 encodeControlBits controlBits =
-    [ controlBitsFIN
-        , controlBitsSYN
-        , controlBitsRST
-        , controlBitsPSH
-        , controlBitsACK
-        , controlBitsURG
-        , controlBitsECE
-        , controlBitsCRW
-        , controlBitsNS
-        ]
-        & zip [0 ..]
-        & foldl' (flip setControlBit) (0 :: Word16)
+    ( setControlBit 0 controlBitsFIN
+        . setControlBit 1 controlBitsSYN
+        . setControlBit 2 controlBitsRST
+        . setControlBit 3 controlBitsPSH
+        . setControlBit 4 controlBitsACK
+        . setControlBit 5 controlBitsURG
+        . setControlBit 6 controlBitsECE
+        . setControlBit 7 controlBitsCRW
+        . setControlBit 8 controlBitsNS
+        )
+        (0 :: Word16)
   where
-    setControlBit :: (Int, ControlBits -> ControlBit) -> Word16 -> Word16
-    setControlBit (index, bitFn) = case bitFn controlBits of
+    setControlBit :: Int -> (ControlBits -> ControlBit) -> Word16 -> Word16
+    setControlBit index bitFn = case bitFn controlBits of
         On  -> flip setBit index
         Off -> id
 
