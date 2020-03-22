@@ -73,7 +73,7 @@ decompWord7 word7 = (dataOffset, decodeControlBits word7)
     dataOffset :: DataOffset
     dataOffset = DataOffset $ w16w8 (shift word7 (-12) .&. 0b1111)
 
-data ControlBit = On | Off
+data ControlBit = On | Off deriving (Show, Eq)
 
 data ControlBits
     = ControlBits
@@ -87,6 +87,7 @@ data ControlBits
       , controlBitsSYN :: ControlBit
       , controlBitsFIN :: ControlBit
       }
+      deriving (Show, Eq)
 
 newtype DataOffset = DataOffset { unDataOffset :: Word8 } -- low 4-bits only
 
@@ -131,8 +132,8 @@ encodeControlBits controlBits =
         Off -> id
 
 decodeControlBits :: Word16 -> ControlBits
-decodeControlBits word = ControlBits { controlBitsSYN = getControlBit 0
-                                     , controlBitsFIN = getControlBit 1
+decodeControlBits word = ControlBits { controlBitsFIN = getControlBit 0
+                                     , controlBitsSYN = getControlBit 1
                                      , controlBitsRST = getControlBit 2
                                      , controlBitsPSH = getControlBit 3
                                      , controlBitsACK = getControlBit 4
