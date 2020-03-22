@@ -77,6 +77,12 @@ decompWord7 word7 = (dataOffset, decodeControlBits word7)
     dataOffset :: Nibble
     dataOffset = wordLowBitsToNibble $ w16w8 (shift word7 (-12) .&. 0b1111)
 
+w8w16 :: Word8 -> Word16
+w8w16 = fromIntegral
+
+w16w8 :: Word16 -> Word8
+w16w8 = fromIntegral
+
 data ControlBit = On | Off deriving (Show, Eq)
 
 data ControlBits
@@ -92,12 +98,6 @@ data ControlBits
       , controlBitsFIN :: ControlBit
       }
       deriving (Show, Eq)
-
-w8w16 :: Word8 -> Word16
-w8w16 = fromIntegral
-
-w16w8 :: Word16 -> Word8
-w16w8 = fromIntegral
 
 zeroControlBits :: ControlBits
 zeroControlBits = ControlBits { controlBitsNS  = Off
