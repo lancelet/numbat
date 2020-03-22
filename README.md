@@ -16,6 +16,8 @@ Instead, it's my personal learning about the network stack.
 
 - [RFC 793][rfc-793]: The main TCP RFC.
 - [TCP at Wikipedia][tcp-wikipedia]: Extra summary of background information.
+- [`tcpdump` Cheatsheet][tcpdump-cheatsheet]: Useful summary of `tcpdump`
+  options.
 - [`rust_tun`][rust-tun]: A Rust binding for TUN which works on MacOS.
 - [`mac-utun`][mac-utun]: Another Rust TUN binding for MacOS.
 
@@ -23,3 +25,4 @@ Instead, it's my personal learning about the network stack.
 [tcp-wikipedia]: https://en.wikipedia.org/wiki/Transmission_Control_Protocol
 [rust-tun]: https://github.com/meh/rust-tun
 [mac-utun]: https://crates.io/crates/mac_utun
+[tcpdump-cheatsheet]: https://www.andreafortuna.org/2018/07/18/tcpdump-a-simple-cheatsheet/
