@@ -11,3 +11,11 @@ Instead, it's my personal learning about the network stack.
 
 - [ ] Encoding / decoding TCP header
 - [ ] TCP state machine
+
+## Sources of Documentation
+
+- [RFC 793][rfc_793] The main TCP RFC.
+- [TCP at Wikipedia][tcp_wikipedia] Extra summary of background information.
+
+[rfc_793]: https://tools.ietf.org/html/rfc793
+[tcp_wikipedia]: https://en.wikipedia.org/wiki/Transmission_Control_Protocol
