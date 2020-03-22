@@ -29,7 +29,10 @@ common ghc-options
 library
   import:          base, ghc-options
   hs-source-dirs:  src
-  exposed-modules: Numbat.TCP.Segment
+  exposed-modules:
+    Numbat.Nibble
+    Numbat.TCP.Segment
+
   build-depends:
     , binary
     , network
@@ -44,10 +47,13 @@ test-suite numbat-tests
     TestUtil
 
   build-depends:
+    , binary
+    , bytestring
     , hedgehog
     , numbat
     , tasty
     , tasty-hedgehog
+    , template-haskell
 
 executable numbat
   import:         base, ghc-options

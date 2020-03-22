@@ -17,6 +17,10 @@ import           Data.Word                      ( Word16
                                                 , Word32
                                                 , Word8
                                                 )
+import           Numbat.Nibble                  ( Nibble
+                                                , nibbleToWordLowBits
+                                                , wordLowBitsToNibble
+                                                )
 
 data Header
     = Header
@@ -24,7 +28,7 @@ data Header
       , headerDestinationPort :: Word16
       , headerSequenceNumber  :: Word32
       , headerAcknowledgement :: Word32
-      , headerDataOffset      :: DataOffset
+      , headerDataOffset      :: Nibble
       , headerControlBits     :: ControlBits
       , headerWindow          :: Word16
       , headerChecksum        :: Word16
@@ -42,9 +46,9 @@ putHeader hdr = do
     Put.putWord16be . headerChecksum $ hdr
     Put.putWord16be . headerUrgentPointer $ hdr
 
-mkWord7 :: DataOffset -> ControlBits -> Word16
+mkWord7 :: Nibble -> ControlBits -> Word16
 mkWord7 dataOffset controlBits = encodeControlBits controlBits
-    .|. shift (w8w16 (dataOffsetToWord8 dataOffset)) 12
+    .|. shift (w8w16 (nibbleToWordLowBits dataOffset)) 12
 
 getHeader :: Get Header
 getHeader = do
@@ -67,11 +71,11 @@ getHeader = do
                 , headerUrgentPointer   = urgentPointer
                 }
 
-decompWord7 :: Word16 -> (DataOffset, ControlBits)
+decompWord7 :: Word16 -> (Nibble, ControlBits)
 decompWord7 word7 = (dataOffset, decodeControlBits word7)
   where
-    dataOffset :: DataOffset
-    dataOffset = DataOffset $ w16w8 (shift word7 (-12) .&. 0b1111)
+    dataOffset :: Nibble
+    dataOffset = wordLowBitsToNibble $ w16w8 (shift word7 (-12) .&. 0b1111)
 
 data ControlBit = On | Off deriving (Show, Eq)
 
@@ -89,16 +93,11 @@ data ControlBits
       }
       deriving (Show, Eq)
 
-newtype DataOffset = DataOffset { unDataOffset :: Word8 } -- low 4-bits only
-
 w8w16 :: Word8 -> Word16
 w8w16 = fromIntegral
 
 w16w8 :: Word16 -> Word8
 w16w8 = fromIntegral
-
-dataOffsetToWord8 :: DataOffset -> Word8
-dataOffsetToWord8 = unDataOffset
 
 zeroControlBits :: ControlBits
 zeroControlBits = ControlBits { controlBitsNS  = Off
