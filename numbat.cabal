@@ -30,7 +30,9 @@ library
   import:          base, ghc-options
   hs-source-dirs:  src
   exposed-modules: Numbat.TCP.Segment
-  build-depends:   binary
+  build-depends:
+    , binary
+    , network
 
 test-suite numbat-tests
   import:         base, ghc-options

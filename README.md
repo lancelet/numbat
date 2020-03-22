@@ -14,8 +14,12 @@ Instead, it's my personal learning about the network stack.
 
 ## Sources of Documentation
 
-- [RFC 793][rfc_793] The main TCP RFC.
-- [TCP at Wikipedia][tcp_wikipedia] Extra summary of background information.
+- [RFC 793][rfc-793]: The main TCP RFC.
+- [TCP at Wikipedia][tcp-wikipedia]: Extra summary of background information.
+- [`rust_tun`][rust-tun]: A Rust binding for TUN which works on MacOS.
+- [`mac-utun`][mac-utun]: Another Rust TUN binding for MacOS.
 
-[rfc_793]: https://tools.ietf.org/html/rfc793
-[tcp_wikipedia]: https://en.wikipedia.org/wiki/Transmission_Control_Protocol
+[rfc-793]: https://tools.ietf.org/html/rfc793
+[tcp-wikipedia]: https://en.wikipedia.org/wiki/Transmission_Control_Protocol
+[rust-tun]: https://github.com/meh/rust-tun
+[mac-utun]: https://crates.io/crates/mac_utun
