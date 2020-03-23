@@ -15,6 +15,7 @@ import           Hedgehog                       ( MonadGen
                                                 , (===)
                                                 )
 import qualified Hedgehog.Gen                  as Gen
+import qualified Hedgehog.Range                as Range
 import           Test.Tasty                     ( TestTree
                                                 , testGroup
                                                 )
@@ -26,64 +27,42 @@ import           TestUtil                       ( hx
 import qualified Data.Binary.Get               as Get
 import           Data.ByteString                ( ByteString )
 import qualified Data.ByteString.Lazy          as LBS
+import qualified Data.Set                      as Set
 import           Data.Word                      ( Word16 )
+import           Optics                         ( (^.) )
 
-import           Numbat.Nibble                  ( wordLowBitsToNibble )
-import           Numbat.TCP.Segment             ( ControlBit(Off, On)
+import qualified Numbat.Nibble                 as Nibble
+import           Numbat.TCP.Segment             ( ControlBit
                                                 , ControlBits
-                                                    ( ControlBits
-                                                    , controlBitsACK
-                                                    , controlBitsCRW
-                                                    , controlBitsECE
-                                                    , controlBitsFIN
-                                                    , controlBitsNS
-                                                    , controlBitsPSH
-                                                    , controlBitsRST
-                                                    , controlBitsSYN
-                                                    , controlBitsURG
-                                                    )
                                                 , Header
-                                                    ( headerAcknowledgement
-                                                    , headerChecksum
-                                                    , headerControlBits
-                                                    , headerDataOffset
-                                                    , headerDestinationPort
-                                                    , headerSequenceNumber
-                                                    , headerSourcePort
-                                                    , headerUrgentPointer
-                                                    , headerWindow
-                                                    )
-                                                , decodeControlBits
-                                                , encodeControlBits
-                                                , getHeader
-                                                , zeroControlBits
                                                 )
+import qualified Numbat.TCP.Segment            as Segment
 
 tests :: TestTree
 tests = testGroup
     "Numbat.TCP.Segment.Tests"
-    [ testProperty "unit: encodeControlBits"     unit_encodeControlBits
+    [ testProperty "unit: controlBitsToWord16"   unit_controlBitsToWord16
     , testProperty "unit: getHeader - example 1" unit_getHeaderExample1
-    , testProperty "prop: ControlBits encode/decode round-trip"
-                   prop_tripControlBits
+    , testProperty "prop: controlBits/Word16 round-trip"
+                   prop_controlBitsRoundTrip
     ]
 
 ---- Unit Tests
 
-unit_encodeControlBits :: Property
-unit_encodeControlBits = unitTest $ do
-    let z   = zeroControlBits
-        ecb = encodeControlBits
-    ecb z === (0 :: Word16)
-    ecb z { controlBitsFIN = On } === (0b0000_0000_0000_0001 :: Word16)
-    ecb z { controlBitsSYN = On } === (0b0000_0000_0000_0010 :: Word16)
-    ecb z { controlBitsRST = On } === (0b0000_0000_0000_0100 :: Word16)
-    ecb z { controlBitsPSH = On } === (0b0000_0000_0000_1000 :: Word16)
-    ecb z { controlBitsACK = On } === (0b0000_0000_0001_0000 :: Word16)
-    ecb z { controlBitsURG = On } === (0b0000_0000_0010_0000 :: Word16)
-    ecb z { controlBitsECE = On } === (0b0000_0000_0100_0000 :: Word16)
-    ecb z { controlBitsCRW = On } === (0b0000_0000_1000_0000 :: Word16)
-    ecb z { controlBitsNS = On } === (0b0000_0001_0000_0000 :: Word16)
+unit_controlBitsToWord16 :: Property
+unit_controlBitsToWord16 = unitTest $ do
+    let oneControlBit :: ControlBit -> Word16
+        oneControlBit controlBit = Segment.controlBitsToWord16
+            (Segment.ControlBits $ Set.fromList $ [controlBit])
+    oneControlBit Segment.FIN === 0b0000_0000_0000_0001
+    oneControlBit Segment.SYN === 0b0000_0000_0000_0010
+    oneControlBit Segment.RST === 0b0000_0000_0000_0100
+    oneControlBit Segment.PSH === 0b0000_0000_0000_1000
+    oneControlBit Segment.ACK === 0b0000_0000_0001_0000
+    oneControlBit Segment.URG === 0b0000_0000_0010_0000
+    oneControlBit Segment.ECE === 0b0000_0000_0100_0000
+    oneControlBit Segment.CRW === 0b0000_0000_1000_0000
+    oneControlBit Segment.NS === 0b0000_0001_0000_0000
 
 unit_getHeaderExample1 :: Property
 unit_getHeaderExample1 = unitTest $ do
@@ -91,43 +70,32 @@ unit_getHeaderExample1 = unitTest $ do
     let hdrBytes :: ByteString =
             [hx| 01 bb e4 0a 2c 32 06 98 ca ed 8a 6d 80 10 00 1f |]
                 <> [hx| 91 44 00 00 01 01 08 0a 62 c4 2f d4 2c 08 39 19 |]
-        hdr :: Header = Get.runGet getHeader (LBS.fromStrict hdrBytes)
-    headerSourcePort hdr === 443
-    headerDestinationPort hdr === 58378
-    headerSequenceNumber hdr === 741475992
-    headerAcknowledgement hdr === 3404565101
-    headerDataOffset hdr === wordLowBitsToNibble 8
-    headerControlBits hdr === zeroControlBits { controlBitsACK = On }
-    headerWindow hdr === 31
-    headerChecksum hdr === 0x9144
-    headerUrgentPointer hdr === 0
+        hdr :: Header = Get.runGet Segment.getHeader (LBS.fromStrict hdrBytes)
+    Segment.headerSourcePort hdr === 443
+    Segment.headerDestinationPort hdr === 58378
+    Segment.headerSequenceNumber hdr === 741475992
+    Segment.headerAcknowledgement hdr === 3404565101
+    Segment.headerDataControlBits hdr
+        ^.  Segment._dataOffset
+        === Nibble.wordLowBitsToNibble 8
+    -- Segment.headerControlBits hdr === zeroControlBits { controlBitsACK = On }
+    Segment.headerWindow hdr === 31
+    Segment.headerChecksum hdr === 0x9144
+    Segment.headerUrgentPointer hdr === 0
 
 ---- Properties
 
-prop_tripControlBits :: Property
-prop_tripControlBits = property $ do
+prop_controlBitsRoundTrip :: Property
+prop_controlBitsRoundTrip = property $ do
     controlBits <- forAll genControlBits
-    (decodeControlBits . encodeControlBits) controlBits === controlBits
+    let w16 = Segment.controlBitsToWord16 controlBits
+    Segment.word16ToControlBits w16 === controlBits
 
 ---- Generators
 
-genControlBits :: MonadGen m => m ControlBits
+genControlBits :: (MonadGen m) => m ControlBits
 genControlBits =
-    ControlBits
-        <$> genControlBit
-        <*> genControlBit
-        <*> genControlBit
-        <*> genControlBit
-        <*> genControlBit
-        <*> genControlBit
-        <*> genControlBit
-        <*> genControlBit
-        <*> genControlBit
+    Segment.ControlBits <$> Gen.set (Range.linear 0 9) genControlBit
 
-genControlBit :: MonadGen m => m ControlBit
-genControlBit = boolToBit <$> Gen.bool
-  where
-    boolToBit :: Bool -> ControlBit
-    boolToBit = \case
-        True  -> On
-        False -> Off
+genControlBit :: (MonadGen m) => m ControlBit
+genControlBit = Gen.enum minBound maxBound

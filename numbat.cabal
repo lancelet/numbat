@@ -35,7 +35,9 @@ library
 
   build-depends:
     , binary
+    , containers
     , network
+    , optics
 
 test-suite numbat-tests
   import:         base, ghc-options
@@ -49,8 +51,10 @@ test-suite numbat-tests
   build-depends:
     , binary
     , bytestring
+    , containers
     , hedgehog
     , numbat
+    , optics
     , tasty
     , tasty-hedgehog
     , template-haskell

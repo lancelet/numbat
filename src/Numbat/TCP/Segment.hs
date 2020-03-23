@@ -1,26 +1,34 @@
 {-|
 -}
-{-# LANGUAGE BinaryLiterals #-}
+{-# LANGUAGE BinaryLiterals     #-}
+{-# LANGUAGE LambdaCase         #-}
+{-# LANGUAGE NumericUnderscores #-}
+{-# LANGUAGE PatternSynonyms    #-}
 module Numbat.TCP.Segment where
 
 import           Data.Binary.Get                ( Get )
 import qualified Data.Binary.Get               as Get
 import           Data.Binary.Put                ( Put )
 import qualified Data.Binary.Put               as Put
-import           Data.Bits                      ( setBit
-                                                , shift
-                                                , testBit
-                                                , (.&.)
+import           Data.Bits                      ( (.&.)
                                                 , (.|.)
                                                 )
+import qualified Data.Bits                     as Bits
+import           Data.Foldable                  ( foldl' )
+import           Data.Functor                   ( (<&>) )
+import           Data.Maybe                     ( catMaybes )
+import           Data.Set                       ( Set )
+import qualified Data.Set                      as Set
 import           Data.Word                      ( Word16
                                                 , Word32
-                                                , Word8
                                                 )
-import           Numbat.Nibble                  ( Nibble
-                                                , nibbleToWordLowBits
-                                                , wordLowBitsToNibble
-                                                )
+import           Optics                         ( (^.) )
+import qualified Optics                        as Optics
+import           Optics.Lens                    ( Lens' )
+import qualified Optics.Lens                   as Lens
+
+import           Numbat.Nibble                  ( Nibble )
+import qualified Numbat.Nibble                 as Nibble
 
 data Header
     = Header
@@ -28,8 +36,7 @@ data Header
       , headerDestinationPort :: Word16
       , headerSequenceNumber  :: Word32
       , headerAcknowledgement :: Word32
-      , headerDataOffset      :: Nibble
-      , headerControlBits     :: ControlBits
+      , headerDataControlBits :: Word16
       , headerWindow          :: Word16
       , headerChecksum        :: Word16
       , headerUrgentPointer   :: Word16
@@ -41,106 +48,127 @@ putHeader hdr = do
     Put.putWord16be . headerDestinationPort $ hdr
     Put.putWord32be . headerSequenceNumber $ hdr
     Put.putWord32be . headerAcknowledgement $ hdr
-    Put.putWord16be $ mkWord7 (headerDataOffset hdr) (headerControlBits hdr)
+    Put.putWord16be . headerDataControlBits $ hdr
     Put.putWord16be . headerWindow $ hdr
     Put.putWord16be . headerChecksum $ hdr
     Put.putWord16be . headerUrgentPointer $ hdr
 
-mkWord7 :: Nibble -> ControlBits -> Word16
-mkWord7 dataOffset controlBits = encodeControlBits controlBits
-    .|. shift (w8w16 (nibbleToWordLowBits dataOffset)) 12
-
 getHeader :: Get Header
 getHeader = do
-    sourcePort                <- Get.getWord16be
-    destinationPort           <- Get.getWord16be
-    sequenceNumber            <- Get.getWord32be
-    acknowledgement           <- Get.getWord32be
-    (dataOffset, controlBits) <- decompWord7 <$> Get.getWord16be
-    window                    <- Get.getWord16be
-    checksum                  <- Get.getWord16be
-    urgentPointer             <- Get.getWord16be
+    sourcePort      <- Get.getWord16be
+    destinationPort <- Get.getWord16be
+    sequenceNumber  <- Get.getWord32be
+    acknowledgement <- Get.getWord32be
+    dataControlBits <- Get.getWord16be
+    window          <- Get.getWord16be
+    checksum        <- Get.getWord16be
+    urgentPointer   <- Get.getWord16be
     pure Header { headerSourcePort      = sourcePort
                 , headerDestinationPort = destinationPort
                 , headerSequenceNumber  = sequenceNumber
                 , headerAcknowledgement = acknowledgement
-                , headerDataOffset      = dataOffset
-                , headerControlBits     = controlBits
+                , headerDataControlBits = dataControlBits
                 , headerWindow          = window
                 , headerChecksum        = checksum
                 , headerUrgentPointer   = urgentPointer
                 }
 
-decompWord7 :: Word16 -> (Nibble, ControlBits)
-decompWord7 word7 = (dataOffset, decodeControlBits word7)
+_FIN :: Lens' Word16 Bool
+_FIN = Lens.lens (getW16Bit 0) (setW16Bit 0)
+
+_SYN :: Lens' Word16 Bool
+_SYN = Lens.lens (getW16Bit 1) (setW16Bit 1)
+
+_RST :: Lens' Word16 Bool
+_RST = Lens.lens (getW16Bit 2) (setW16Bit 2)
+
+_PSH :: Lens' Word16 Bool
+_PSH = Lens.lens (getW16Bit 3) (setW16Bit 3)
+
+_ACK :: Lens' Word16 Bool
+_ACK = Lens.lens (getW16Bit 4) (setW16Bit 4)
+
+_URG :: Lens' Word16 Bool
+_URG = Lens.lens (getW16Bit 5) (setW16Bit 5)
+
+_ECE :: Lens' Word16 Bool
+_ECE = Lens.lens (getW16Bit 6) (setW16Bit 6)
+
+_CRW :: Lens' Word16 Bool
+_CRW = Lens.lens (getW16Bit 7) (setW16Bit 7)
+
+_NS :: Lens' Word16 Bool
+_NS = Lens.lens (getW16Bit 8) (setW16Bit 8)
+
+_dataOffset :: Lens' Word16 Nibble
+_dataOffset = Lens.lens get set
   where
-    dataOffset :: Nibble
-    dataOffset = wordLowBitsToNibble $ w16w8 (shift word7 (-12) .&. 0b1111)
+    get :: Word16 -> Nibble
+    get = Nibble.wordLowBitsToNibble . fromIntegral . flip Bits.shiftR 12
 
-w8w16 :: Word8 -> Word16
-w8w16 = fromIntegral
+    set :: Word16 -> Nibble -> Word16
+    set w n = w' .|. Bits.shiftL l 12
+      where
+        l :: Word16
+        l = fromIntegral $ Nibble.nibbleToWordLowBits n
 
-w16w8 :: Word16 -> Word8
-w16w8 = fromIntegral
+        w' :: Word16
+        w' = w .&. 0b0000_1111_1111_1111
 
-data ControlBit = On | Off deriving (Show, Eq)
+getW16Bit :: Int -> Word16 -> Bool
+getW16Bit i w = Bits.testBit w i
 
-data ControlBits
-    = ControlBits
-      { controlBitsNS  :: ControlBit
-      , controlBitsCRW :: ControlBit
-      , controlBitsECE :: ControlBit
-      , controlBitsURG :: ControlBit
-      , controlBitsACK :: ControlBit
-      , controlBitsPSH :: ControlBit
-      , controlBitsRST :: ControlBit
-      , controlBitsSYN :: ControlBit
-      , controlBitsFIN :: ControlBit
-      }
-      deriving (Show, Eq)
+setW16Bit :: Int -> Word16 -> Bool -> Word16
+setW16Bit i w b = if b then Bits.setBit w i else Bits.clearBit w i
 
-zeroControlBits :: ControlBits
-zeroControlBits = ControlBits { controlBitsNS  = Off
-                              , controlBitsCRW = Off
-                              , controlBitsECE = Off
-                              , controlBitsURG = Off
-                              , controlBitsACK = Off
-                              , controlBitsPSH = Off
-                              , controlBitsRST = Off
-                              , controlBitsSYN = Off
-                              , controlBitsFIN = Off
-                              }
+data ControlBit
+  = FIN
+  | SYN
+  | RST
+  | PSH
+  | ACK
+  | URG
+  | ECE
+  | CRW
+  | NS
+  deriving (Eq, Ord, Enum, Bounded, Show)
 
-encodeControlBits :: ControlBits -> Word16
-encodeControlBits controlBits =
-    ( setControlBit 0 controlBitsFIN
-        . setControlBit 1 controlBitsSYN
-        . setControlBit 2 controlBitsRST
-        . setControlBit 3 controlBitsPSH
-        . setControlBit 4 controlBitsACK
-        . setControlBit 5 controlBitsURG
-        . setControlBit 6 controlBitsECE
-        . setControlBit 7 controlBitsCRW
-        . setControlBit 8 controlBitsNS
-        )
-        (0 :: Word16)
+newtype ControlBits = ControlBits { unControlBits :: Set ControlBit }
+  deriving (Eq, Show)
+
+controlBitsToWord16 :: ControlBits -> Word16
+controlBitsToWord16 controlBits = foldl' (\x f -> f x) (0 :: Word16) setFns
   where
-    setControlBit :: Int -> (ControlBits -> ControlBit) -> Word16 -> Word16
-    setControlBit index bitFn = case bitFn controlBits of
-        On  -> flip setBit index
-        Off -> id
+    setFns :: [Word16 -> Word16]
+    setFns = Set.toList (unControlBits controlBits) <&> setFn
 
-decodeControlBits :: Word16 -> ControlBits
-decodeControlBits word = ControlBits { controlBitsFIN = getControlBit 0
-                                     , controlBitsSYN = getControlBit 1
-                                     , controlBitsRST = getControlBit 2
-                                     , controlBitsPSH = getControlBit 3
-                                     , controlBitsACK = getControlBit 4
-                                     , controlBitsURG = getControlBit 5
-                                     , controlBitsECE = getControlBit 6
-                                     , controlBitsCRW = getControlBit 7
-                                     , controlBitsNS  = getControlBit 8
-                                     }
+    setFn :: ControlBit -> (Word16 -> Word16)
+    setFn = \case
+        FIN -> Optics.set' _FIN True
+        SYN -> Optics.set' _SYN True
+        RST -> Optics.set' _RST True
+        PSH -> Optics.set' _PSH True
+        ACK -> Optics.set' _ACK True
+        URG -> Optics.set' _URG True
+        ECE -> Optics.set' _ECE True
+        CRW -> Optics.set' _CRW True
+        NS  -> Optics.set' _NS True
+
+word16ToControlBits :: Word16 -> ControlBits
+word16ToControlBits word = ControlBits $ Set.fromList $ catMaybes bits
   where
-    getControlBit :: Int -> ControlBit
-    getControlBit index = if testBit word index then On else Off
+    bits :: [Maybe ControlBit]
+    bits =
+        [ getBit FIN _FIN
+        , getBit SYN _SYN
+        , getBit RST _RST
+        , getBit PSH _PSH
+        , getBit ACK _ACK
+        , getBit URG _URG
+        , getBit ECE _ECE
+        , getBit CRW _CRW
+        , getBit NS  _NS
+        ]
+
+    getBit :: ControlBit -> Lens' Word16 Bool -> Maybe ControlBit
+    getBit controlBit lens = if word ^. lens then Just controlBit else Nothing
