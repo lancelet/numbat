@@ -16,6 +16,7 @@ import qualified Data.Bits                     as Bits
 import           Data.ByteString                ( ByteString )
 import qualified Data.ByteString               as ByteString
 import           Data.Foldable                  ( foldl' )
+import           Data.Function                  ( (&) )
 import           Data.Functor                   ( (<&>) )
 import           Data.Maybe                     ( catMaybes )
 import           Data.Serialize.Get             ( Get )
@@ -72,11 +73,11 @@ getHeader = Get.label "TCP Header" $ do
     checksum        <- Get.getWord16be
     urgentPointer   <- Get.getWord16be
     let dataOffset :: Int =
-            fromIntegral
-                $  Nibble.nibbleToWordLowBits
-                $  dataControlBits
+            dataControlBits
                 ^. _dataOffset
-        optionsLen :: Int = (dataOffset - 5) * 4
+                &  Nibble.nibbleToWordLowBits
+                &  fromIntegral
+        optionsLen :: Int = max 0 (dataOffset - 5) * 4
     rawOptions <- if optionsLen > 0
         then Get.isolate optionsLen getRawOptions
         else pure emptyRawOptions
@@ -174,7 +175,7 @@ getRawOption = Get.label "Raw TCP option" $ do
         0x01 -> pure $ RawOption 0x01 ByteString.empty
         kind -> do
             len <- Get.getWord8
-            let nBytes :: Int = fromIntegral (len - 2)
+            let nBytes :: Int = max 0 (fromIntegral len - 2)
             Get.isolate nBytes $ RawOption kind <$> Get.getByteString nBytes
 
 putRawOptions :: RawOptions -> Put
