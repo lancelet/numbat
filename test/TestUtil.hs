@@ -1,9 +1,11 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE LambdaCase       #-}
 {-# LANGUAGE TemplateHaskell  #-}
 module TestUtil
     ( unitTest
     , parseHexString
     , hx
+    , fromRight
     )
 where
 
@@ -47,6 +49,11 @@ hx = QuasiQuoter { quoteExp  = parseHexStringM >=> liftByteString
                  , quoteDec  = undefined
                  , quoteType = undefined
                  }
+
+fromRight :: MonadFail m => Either a b -> m b
+fromRight = \case
+    Right x -> pure x
+    Left  _ -> fail "fromRight called on a Left value"
 
 liftByteString :: ByteString -> Q Exp
 liftByteString bs =

@@ -34,7 +34,8 @@ library
     Numbat.TCP.Segment
 
   build-depends:
-    , binary
+    , bytestring
+    , cereal
     , containers
     , network
     , optics
@@ -49,8 +50,8 @@ test-suite numbat-tests
     TestUtil
 
   build-depends:
-    , binary
     , bytestring
+    , cereal
     , containers
     , hedgehog
     , numbat

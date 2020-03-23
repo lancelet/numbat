@@ -20,20 +20,20 @@ import           Test.Tasty                     ( TestTree
                                                 , testGroup
                                                 )
 import           Test.Tasty.Hedgehog            ( testProperty )
-import           TestUtil                       ( hx
+import           TestUtil                       ( fromRight
+                                                , hx
                                                 , unitTest
                                                 )
 
-import qualified Data.Binary.Get               as Get
 import           Data.ByteString                ( ByteString )
-import qualified Data.ByteString.Lazy          as LBS
+import qualified Data.Serialize.Get            as Get
 import qualified Data.Set                      as Set
-import           Data.Word                      ( Word16 )
 import           Optics                         ( (^.) )
 
 import qualified Numbat.Nibble                 as Nibble
 import           Numbat.TCP.Segment             ( ControlBit
                                                 , ControlBits
+                                                , DataControlBits
                                                 , Header
                                                 )
 import qualified Numbat.TCP.Segment            as Segment
@@ -41,7 +41,8 @@ import qualified Numbat.TCP.Segment            as Segment
 tests :: TestTree
 tests = testGroup
     "Numbat.TCP.Segment.Tests"
-    [ testProperty "unit: controlBitsToWord16"   unit_controlBitsToWord16
+    [ testProperty "unit: controlBitsToWord16 - single bits"
+                   unit_controlBitsToWord16
     , testProperty "unit: getHeader - example 1" unit_getHeaderExample1
     , testProperty "prop: controlBits/Word16 round-trip"
                    prop_controlBitsRoundTrip
@@ -51,8 +52,8 @@ tests = testGroup
 
 unit_controlBitsToWord16 :: Property
 unit_controlBitsToWord16 = unitTest $ do
-    let oneControlBit :: ControlBit -> Word16
-        oneControlBit controlBit = Segment.controlBitsToWord16
+    let oneControlBit :: ControlBit -> DataControlBits
+        oneControlBit controlBit = Segment.controlBitsToDataControlBits
             (Segment.ControlBits $ Set.fromList $ [controlBit])
     oneControlBit Segment.FIN === 0b0000_0000_0000_0001
     oneControlBit Segment.SYN === 0b0000_0000_0000_0010
@@ -70,7 +71,7 @@ unit_getHeaderExample1 = unitTest $ do
     let hdrBytes :: ByteString =
             [hx| 01 bb e4 0a 2c 32 06 98 ca ed 8a 6d 80 10 00 1f |]
                 <> [hx| 91 44 00 00 01 01 08 0a 62 c4 2f d4 2c 08 39 19 |]
-        hdr :: Header = Get.runGet Segment.getHeader (LBS.fromStrict hdrBytes)
+    hdr :: Header <- fromRight $ Get.runGet Segment.getHeader hdrBytes
     Segment.headerSourcePort hdr === 443
     Segment.headerDestinationPort hdr === 58378
     Segment.headerSequenceNumber hdr === 741475992
@@ -88,8 +89,9 @@ unit_getHeaderExample1 = unitTest $ do
 prop_controlBitsRoundTrip :: Property
 prop_controlBitsRoundTrip = property $ do
     controlBits <- forAll genControlBits
-    let w16 = Segment.controlBitsToWord16 controlBits
-    Segment.word16ToControlBits w16 === controlBits
+    let dcb :: DataControlBits =
+            Segment.controlBitsToDataControlBits controlBits
+    Segment.dataControlBitsToControlBits dcb === controlBits
 
 ---- Generators
 

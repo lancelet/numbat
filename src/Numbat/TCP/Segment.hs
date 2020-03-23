@@ -1,26 +1,32 @@
 {-|
 -}
-{-# LANGUAGE BinaryLiterals     #-}
-{-# LANGUAGE LambdaCase         #-}
-{-# LANGUAGE NumericUnderscores #-}
-{-# LANGUAGE PatternSynonyms    #-}
+{-# LANGUAGE BinaryLiterals             #-}
+{-# LANGUAGE GeneralisedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE NumericUnderscores         #-}
+{-# LANGUAGE PatternSynonyms            #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
 module Numbat.TCP.Segment where
 
-import           Data.Binary.Get                ( Get )
-import qualified Data.Binary.Get               as Get
-import           Data.Binary.Put                ( Put )
-import qualified Data.Binary.Put               as Put
+import           Control.Applicative            ( many )
 import           Data.Bits                      ( (.&.)
                                                 , (.|.)
                                                 )
 import qualified Data.Bits                     as Bits
+import           Data.ByteString                ( ByteString )
+import qualified Data.ByteString               as ByteString
 import           Data.Foldable                  ( foldl' )
 import           Data.Functor                   ( (<&>) )
 import           Data.Maybe                     ( catMaybes )
+import           Data.Serialize.Get             ( Get )
+import qualified Data.Serialize.Get            as Get
+import           Data.Serialize.Put             ( Put )
+import qualified Data.Serialize.Put            as Put
 import           Data.Set                       ( Set )
 import qualified Data.Set                      as Set
 import           Data.Word                      ( Word16
                                                 , Word32
+                                                , Word8
                                                 )
 import           Optics                         ( (^.) )
 import qualified Optics                        as Optics
@@ -36,10 +42,11 @@ data Header
       , headerDestinationPort :: Word16
       , headerSequenceNumber  :: Word32
       , headerAcknowledgement :: Word32
-      , headerDataControlBits :: Word16
+      , headerDataControlBits :: DataControlBits
       , headerWindow          :: Word16
       , headerChecksum        :: Word16
       , headerUrgentPointer   :: Word16
+      , headerRawOptions      :: RawOptions
       }
 
 putHeader :: Header -> Put
@@ -48,21 +55,31 @@ putHeader hdr = do
     Put.putWord16be . headerDestinationPort $ hdr
     Put.putWord32be . headerSequenceNumber $ hdr
     Put.putWord32be . headerAcknowledgement $ hdr
-    Put.putWord16be . headerDataControlBits $ hdr
+    Put.putWord16be . unDataControlBits . headerDataControlBits $ hdr
     Put.putWord16be . headerWindow $ hdr
     Put.putWord16be . headerChecksum $ hdr
     Put.putWord16be . headerUrgentPointer $ hdr
+    putRawOptions . headerRawOptions $ hdr
 
 getHeader :: Get Header
-getHeader = do
+getHeader = Get.label "TCP Header" $ do
     sourcePort      <- Get.getWord16be
     destinationPort <- Get.getWord16be
     sequenceNumber  <- Get.getWord32be
     acknowledgement <- Get.getWord32be
-    dataControlBits <- Get.getWord16be
+    dataControlBits <- DataControlBits <$> Get.getWord16be
     window          <- Get.getWord16be
     checksum        <- Get.getWord16be
     urgentPointer   <- Get.getWord16be
+    let dataOffset :: Int =
+            fromIntegral
+                $  Nibble.nibbleToWordLowBits
+                $  dataControlBits
+                ^. _dataOffset
+        optionsLen :: Int = (dataOffset - 5) * 4
+    rawOptions <- if optionsLen > 0
+        then Get.isolate optionsLen getRawOptions
+        else pure emptyRawOptions
     pure Header { headerSourcePort      = sourcePort
                 , headerDestinationPort = destinationPort
                 , headerSequenceNumber  = sequenceNumber
@@ -71,55 +88,108 @@ getHeader = do
                 , headerWindow          = window
                 , headerChecksum        = checksum
                 , headerUrgentPointer   = urgentPointer
+                , headerRawOptions      = rawOptions
                 }
 
-_FIN :: Lens' Word16 Bool
+newtype DataControlBits = DataControlBits { unDataControlBits :: Word16 }
+  deriving (Eq, Show, Ord, Num)
+
+_FIN :: Lens' DataControlBits Bool
 _FIN = Lens.lens (getW16Bit 0) (setW16Bit 0)
 
-_SYN :: Lens' Word16 Bool
+_SYN :: Lens' DataControlBits Bool
 _SYN = Lens.lens (getW16Bit 1) (setW16Bit 1)
 
-_RST :: Lens' Word16 Bool
+_RST :: Lens' DataControlBits Bool
 _RST = Lens.lens (getW16Bit 2) (setW16Bit 2)
 
-_PSH :: Lens' Word16 Bool
+_PSH :: Lens' DataControlBits Bool
 _PSH = Lens.lens (getW16Bit 3) (setW16Bit 3)
 
-_ACK :: Lens' Word16 Bool
+_ACK :: Lens' DataControlBits Bool
 _ACK = Lens.lens (getW16Bit 4) (setW16Bit 4)
 
-_URG :: Lens' Word16 Bool
+_URG :: Lens' DataControlBits Bool
 _URG = Lens.lens (getW16Bit 5) (setW16Bit 5)
 
-_ECE :: Lens' Word16 Bool
+_ECE :: Lens' DataControlBits Bool
 _ECE = Lens.lens (getW16Bit 6) (setW16Bit 6)
 
-_CRW :: Lens' Word16 Bool
+_CRW :: Lens' DataControlBits Bool
 _CRW = Lens.lens (getW16Bit 7) (setW16Bit 7)
 
-_NS :: Lens' Word16 Bool
+_NS :: Lens' DataControlBits Bool
 _NS = Lens.lens (getW16Bit 8) (setW16Bit 8)
 
-_dataOffset :: Lens' Word16 Nibble
+_dataOffset :: Lens' DataControlBits Nibble
 _dataOffset = Lens.lens get set
   where
-    get :: Word16 -> Nibble
-    get = Nibble.wordLowBitsToNibble . fromIntegral . flip Bits.shiftR 12
+    get :: DataControlBits -> Nibble
+    get =
+        Nibble.wordLowBitsToNibble
+            . fromIntegral
+            . flip Bits.shiftR 12
+            . unDataControlBits
 
-    set :: Word16 -> Nibble -> Word16
-    set w n = w' .|. Bits.shiftL l 12
+    set :: DataControlBits -> Nibble -> DataControlBits
+    set b n = DataControlBits $ (w .&. 0b0000_1111_1111_1111) .|. Bits.shiftL
+        l
+        12
       where
+        w :: Word16
+        w = unDataControlBits b
+
         l :: Word16
         l = fromIntegral $ Nibble.nibbleToWordLowBits n
 
-        w' :: Word16
-        w' = w .&. 0b0000_1111_1111_1111
+getW16Bit :: Int -> DataControlBits -> Bool
+getW16Bit i w = Bits.testBit (unDataControlBits w) i
 
-getW16Bit :: Int -> Word16 -> Bool
-getW16Bit i w = Bits.testBit w i
+setW16Bit :: Int -> DataControlBits -> Bool -> DataControlBits
+setW16Bit i w' b = DataControlBits
+    $ if b then Bits.setBit w i else Bits.clearBit w i
+  where
+    w :: Word16
+    w = unDataControlBits w'
 
-setW16Bit :: Int -> Word16 -> Bool -> Word16
-setW16Bit i w b = if b then Bits.setBit w i else Bits.clearBit w i
+newtype RawOptions = RawOptions { unRawOptions :: [RawOption] }
+
+data RawOption
+  = RawOption
+    { rawOptionKind  :: Word8
+    , rawOptionValue :: ByteString
+    }
+
+emptyRawOptions :: RawOptions
+emptyRawOptions = RawOptions []
+
+getRawOptions :: Get RawOptions
+getRawOptions = RawOptions <$> many getRawOption
+
+getRawOption :: Get RawOption
+getRawOption = Get.label "Raw TCP option" $ do
+    kindByte :: Word8 <- Get.getWord8
+    case kindByte of
+        0x00 -> pure $ RawOption 0x00 ByteString.empty
+        0x01 -> pure $ RawOption 0x01 ByteString.empty
+        kind -> do
+            len <- Get.getWord8
+            let nBytes :: Int = fromIntegral (len - 2)
+            Get.isolate nBytes $ RawOption kind <$> Get.getByteString nBytes
+
+putRawOptions :: RawOptions -> Put
+putRawOptions options = sequence_ $ putRawOption <$> unRawOptions options
+
+putRawOption :: RawOption -> Put
+putRawOption rawOption = case rawOptionKind rawOption of
+    0x00 -> Put.putWord8 0x00
+    0x01 -> Put.putWord8 0x01
+    kind -> do
+        let value :: ByteString = rawOptionValue rawOption
+            len :: Word8        = fromIntegral (ByteString.length value)
+        Put.putWord8 kind
+        Put.putWord8 len
+        Put.putByteString value
 
 data ControlBit
   = FIN
@@ -136,13 +206,15 @@ data ControlBit
 newtype ControlBits = ControlBits { unControlBits :: Set ControlBit }
   deriving (Eq, Show)
 
-controlBitsToWord16 :: ControlBits -> Word16
-controlBitsToWord16 controlBits = foldl' (\x f -> f x) (0 :: Word16) setFns
+controlBitsToDataControlBits :: ControlBits -> DataControlBits
+controlBitsToDataControlBits controlBits = foldl' (\x f -> f x)
+                                                  (0 :: DataControlBits)
+                                                  setFns
   where
-    setFns :: [Word16 -> Word16]
+    setFns :: [DataControlBits -> DataControlBits]
     setFns = Set.toList (unControlBits controlBits) <&> setFn
 
-    setFn :: ControlBit -> (Word16 -> Word16)
+    setFn :: ControlBit -> (DataControlBits -> DataControlBits)
     setFn = \case
         FIN -> Optics.set' _FIN True
         SYN -> Optics.set' _SYN True
@@ -154,8 +226,8 @@ controlBitsToWord16 controlBits = foldl' (\x f -> f x) (0 :: Word16) setFns
         CRW -> Optics.set' _CRW True
         NS  -> Optics.set' _NS True
 
-word16ToControlBits :: Word16 -> ControlBits
-word16ToControlBits word = ControlBits $ Set.fromList $ catMaybes bits
+dataControlBitsToControlBits :: DataControlBits -> ControlBits
+dataControlBitsToControlBits dcb = ControlBits $ Set.fromList $ catMaybes bits
   where
     bits :: [Maybe ControlBit]
     bits =
@@ -170,5 +242,5 @@ word16ToControlBits word = ControlBits $ Set.fromList $ catMaybes bits
         , getBit NS  _NS
         ]
 
-    getBit :: ControlBit -> Lens' Word16 Bool -> Maybe ControlBit
-    getBit controlBit lens = if word ^. lens then Just controlBit else Nothing
+    getBit :: ControlBit -> Lens' DataControlBits Bool -> Maybe ControlBit
+    getBit controlBit lens = if dcb ^. lens then Just controlBit else Nothing
