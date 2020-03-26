@@ -26,9 +26,10 @@ import           TestUtil                       ( fromRight
                                                 )
 
 import           Data.ByteString                ( ByteString )
+import qualified Data.ByteString               as ByteString
 import qualified Data.Serialize.Get            as Get
 import qualified Data.Set                      as Set
-import           Optics                         ( (^.) )
+import           Optics                         ( set' )
 
 import qualified Numbat.Nibble                 as Nibble
 import           Numbat.TCP.Segment             ( ControlBit
@@ -54,7 +55,7 @@ unit_controlBitsToWord16 :: Property
 unit_controlBitsToWord16 = unitTest $ do
     let oneControlBit :: ControlBit -> DataControlBits
         oneControlBit controlBit = Segment.controlBitsToDataControlBits
-            (Segment.ControlBits $ Set.fromList $ [controlBit])
+            (Segment.ControlBits $ Set.fromList [controlBit])
     oneControlBit Segment.FIN === 0b0000_0000_0000_0001
     oneControlBit Segment.SYN === 0b0000_0000_0000_0010
     oneControlBit Segment.RST === 0b0000_0000_0000_0100
@@ -71,18 +72,34 @@ unit_getHeaderExample1 = unitTest $ do
     let hdrBytes :: ByteString =
             [hx| 01 bb e4 0a 2c 32 06 98 ca ed 8a 6d 80 10 00 1f |]
                 <> [hx| 91 44 00 00 01 01 08 0a 62 c4 2f d4 2c 08 39 19 |]
-    hdr :: Header <- fromRight $ Get.runGet Segment.getHeader hdrBytes
-    Segment.headerSourcePort hdr === 443
-    Segment.headerDestinationPort hdr === 58378
-    Segment.headerSequenceNumber hdr === 741475992
-    Segment.headerAcknowledgement hdr === 3404565101
-    Segment.headerDataControlBits hdr
-        ^.  Segment._dataOffset
-        === Nibble.wordLowBitsToNibble 8
-    -- Segment.headerControlBits hdr === zeroControlBits { controlBitsACK = On }
-    Segment.headerWindow hdr === 31
-    Segment.headerChecksum hdr === 0x9144
-    Segment.headerUrgentPointer hdr === 0
+    header :: Header <- fromRight $ Get.runGet Segment.getHeader hdrBytes
+    let
+        expected :: Header = Segment.Header
+            { Segment.headerSourcePort      = 443
+            , Segment.headerDestinationPort = 58378
+            , Segment.headerSequenceNumber  = 741475992
+            , Segment.headerAcknowledgement = 3404565101
+            , Segment.headerDataControlBits =
+                set' Segment._dataOffset (Nibble.wordLowBitsToNibble 8)
+                . set' Segment._ACK True
+                $ Segment.DataControlBits 0
+            , Segment.headerWindow          = 31
+            , Segment.headerChecksum        = 0x9144
+            , Segment.headerUrgentPointer   = 0
+            , Segment.headerRawOptions      = Segment.RawOptions
+                [ Segment.RawOption { Segment.rawOptionKind  = 0x01
+                                    , Segment.rawOptionValue = ByteString.empty
+                                    }
+                , Segment.RawOption { Segment.rawOptionKind  = 0x01
+                                    , Segment.rawOptionValue = ByteString.empty
+                                    }
+                , Segment.RawOption
+                    { Segment.rawOptionKind  = 0x08
+                    , Segment.rawOptionValue = [hx| 62 c4 2f d4 2c 08 39 19 |]
+                    }
+                ]
+            }
+    header === expected
 
 ---- Properties
 

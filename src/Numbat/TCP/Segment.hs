@@ -30,7 +30,7 @@ import           Data.Word                      ( Word16
                                                 , Word8
                                                 )
 import           Optics                         ( (^.) )
-import qualified Optics                        as Optics
+import qualified Optics
 import           Optics.Lens                    ( Lens' )
 import qualified Optics.Lens                   as Lens
 
@@ -48,7 +48,7 @@ data Header
       , headerChecksum        :: Word16
       , headerUrgentPointer   :: Word16
       , headerRawOptions      :: RawOptions
-      }
+      } deriving (Eq, Show)
 
 putHeader :: Header -> Put
 putHeader hdr = do
@@ -92,6 +92,7 @@ getHeader = Get.label "TCP Header" $ do
                 , headerRawOptions      = rawOptions
                 }
 
+-- | 7th word of the TCP header, containing the data offset and control bits.
 newtype DataControlBits = DataControlBits { unDataControlBits :: Word16 }
   deriving (Eq, Show, Ord, Num)
 
@@ -154,12 +155,14 @@ setW16Bit i w' b = DataControlBits
     w = unDataControlBits w'
 
 newtype RawOptions = RawOptions { unRawOptions :: [RawOption] }
+  deriving (Eq, Show)
 
 data RawOption
   = RawOption
     { rawOptionKind  :: Word8
     , rawOptionValue :: ByteString
     }
+  deriving (Eq, Show)
 
 emptyRawOptions :: RawOptions
 emptyRawOptions = RawOptions []
