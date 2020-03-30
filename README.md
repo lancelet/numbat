@@ -23,8 +23,8 @@ Instead, it's my personal learning about the network stack.
 - [`mac-utun`][mac-utun]: Another Rust TUN binding for MacOS.
 - [WWDC Presentation on DriverKit][wwdc-driverkit]: DriverKit allows user-space
   macOS drivers. Maybe even a TAP (layer 2 virtualisation) implementation.
-- [networkingdriverkit][WWDC Presentation on Network Extensions]: I think this 
-  is more background on DriverKit, etc.
+- [WWDC Presentation on Network Extensions][wwdc-network-extensions]: I think 
+  this is more background on DriverKit, etc.
 - [NetworkingDriverKit][networkingdriverkit]: A sub-component of DriverKit,
   for Ethernet drivers.
 
